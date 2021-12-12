@@ -1,5 +1,5 @@
 {
-	"totalPopulation": 50,
+	"totalPopulation": 10000,
 	"agePopularity":[
 		{"first": "00-10", "second": 10.0},
 		{"first": "11-20", "second": 10.0},

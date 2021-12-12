@@ -2,12 +2,17 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import org.neo4j.driver.*
+import org.neo4j.driver.Values.ofLocalDateTime
 import kotlin.math.pow
 import kotlin.streams.*
 import java.util.stream.*
 
 import org.neo4j.driver.Values.parameters;
 import java.io.File
+import java.time.Instant
+import java.util.*
+import kotlin.collections.ArrayList
+import kotlin.collections.HashMap
 
 val fileName = "inputData.json"
 var inputData: JsonData? = null
@@ -78,6 +83,12 @@ class DBWriter :
                                 "CREATE (p1)-[rel:KNOWS]->(p2) "
             session.writeTransaction{ tx -> tx.run(queryString)}
         }
+//        relations.parallelStream().forEach{ relation ->
+//            val queryString = "MATCH (p1:Person) WHERE id(p1) = " + relation.first + " " +
+//                                "MATCH (p2:Person) WHERE id(p2) = " + relation.second + " " +
+//                                "CREATE (p1)-[rel:KNOWS]->(p2) "
+//            session.writeTransaction{ tx -> tx.run(queryString)}
+//        }
     }
 
 
@@ -141,6 +152,77 @@ class DBWriter :
         }
 
         return out
+    }
+
+    fun connectSeparateGraphNodes(id: Int){
+        val queryString = "CALL gds.wcc.stream('myGraph$id')\n" +
+                            "YIELD nodeId, componentId\n" +
+                            "RETURN componentId, max(nodeId)"
+
+        var separateNodes: MutableList<Record> = ArrayList()
+
+        session.writeTransaction{ tx ->
+            val result: Result = tx.run(queryString)
+            separateNodes = result.list()
+            println(separateNodes.size)
+        }
+
+        var nodesPretty: MutableList<Int> = ArrayList(separateNodes.size)
+        for(node in separateNodes)
+            nodesPretty.add(node["max(nodeId)"].asInt())
+
+
+        var graphRelations: MutableList<Pair<Int, Int>> = ArrayList(nodesPretty.size * 2)
+        var graphDegrees: MutableMap<Int, Int> = HashMap(nodesPretty.size)
+
+        for(i in 0 until nodesPretty.size){
+            graphRelations.add(Pair(nodesPretty[i], nodesPretty[(i+1).mod(nodesPretty.size)]))
+            graphDegrees[i] = 1
+        }
+//
+//
+//        val relationsToRemove: MutableList<Pair<Int, Int>> = ArrayList(graphRelations.size/3)
+//        val relationsToAdd: MutableList<Pair<Int, Int>> = ArrayList(graphRelations.size/3)
+//
+//        for(i in 1..3){
+//            graphRelations.parallelStream().filter{(0..100).random() <= 20}
+//                .forEach{ relation ->
+//                    relationsToRemove.add(relation)
+//
+//                    val higherDegreeNodeId = if(graphDegrees[relation.first]!! >= graphDegrees[relation.second]!!)
+//                        relation.first else relation.second
+//
+//                    val lowerDegreeNodeId = if(higherDegreeNodeId == relation.first)
+//                        relation.second else relation.first
+//
+//                    graphDegrees[lowerDegreeNodeId] = graphDegrees[lowerDegreeNodeId]!! - 1
+//
+//                    var newNodeId: Int
+//                    do {
+//                        newNodeId = drawWeightedRandomNode(graphDegrees, 5.0)
+//                    }while(newNodeId == higherDegreeNodeId)
+//
+//                    graphDegrees[newNodeId] = graphDegrees[newNodeId]!! + 1
+//
+//                    relationsToAdd.add(Pair(higherDegreeNodeId, newNodeId))
+//                }
+//            for(relation in relationsToRemove)
+//                graphRelations.remove(relation)
+//
+//            for(relation in relationsToAdd)
+//                graphRelations.add(relation)
+//
+//            relationsToRemove.clear()
+//            relationsToAdd.clear()
+//        }
+
+        for(i in 0 until nodesPretty.size){
+            graphRelations.add(Pair(nodesPretty[i], nodesPretty[(i+2).mod(nodesPretty.size)]))
+            graphDegrees[i] = 1
+        }
+
+        for(relation in graphRelations)
+            addRelation(relation.first, relation.second)
     }
 
 }
@@ -309,13 +391,14 @@ fun rewireRelationsNew(){
 
     val nodeDegrees: MutableMap<Int, Int> = HashMap(population)
 
-    for(i in 0..population)
+    for(i in 0 until population)
         nodeDegrees[i] = degree
 
     val relationsToRemove: MutableList<Pair<Int, Int>> = ArrayList(relations.size/3)
     val relationsToAdd: MutableList<Pair<Int, Int>> = ArrayList(relations.size/3)
 
     for(i in 1..3){
+        println("Entering rewire loop $i")
         relations.parallelStream().filter { (0..100).random() <= (p / 3) * 100 }
             .forEach { relation ->
 
@@ -350,6 +433,7 @@ fun rewireRelationsNew(){
         relationsToAdd.clear()
     }
 
+    println("rewire loops ended, saving relations")
     dbWriter.saveRelations()
 
 }
@@ -392,28 +476,43 @@ fun rewireRelations(){
 
 fun main(args: Array<String>) {
 
-//    dbWriter.clearDatabase()
+    val startTime = Instant.now().epochSecond
+
+    dbWriter.clearDatabase()
 
     readInputData()
 
     generateAndSavePeople()
 
-    var rewireCounter = 0
-    do {
+//    var rewireCounter = 0
+//    do {
+    println("generating regular relations")
         generateRegularRelations()
 //        rewireRelations()
+    println("starting to rewire relations")
         rewireRelationsNew()
 
-        rewireCounter++
-        println(rewireCounter)
+
+    val rewireEndTime = Instant.now().epochSecond
+    println("time to finish and save rewire: " + (rewireEndTime - startTime) + "s")
+
+//        rewireCounter++
+//        println(rewireCounter)
 
 
-        val numberOfGraphs = dbWriter.numberOfSeparateGraphs(rewireCounter)
+//        val numberOfGraphs = dbWriter.numberOfSeparateGraphs(rewireCounter)
 //        println("number of graphs: $numberOfGraphs")
-    }while(numberOfGraphs > 1)
+//    }while(numberOfGraphs > 1)
 
 //    for(i in 1..rewireCounter){
 //        dbWriter.destroySeparateGraphCounter(i)
 //    }
 
+    println("counting separate graphs")
+    dbWriter.setupSeparateGraphsCounter(1)
+    println("connecting separate graphs")
+    dbWriter.connectSeparateGraphNodes(1)
+
+    val endTime = Instant.now().epochSecond
+    println("execution time: " + (endTime - startTime) + "s")
 }
