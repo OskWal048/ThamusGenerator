@@ -1,0 +1,19 @@
+{
+	"totalPopulation": 50,
+	"agePopularity":[
+		{"first": "00-10", "second": 10.0},
+		{"first": "11-20", "second": 10.0},
+		{"first": "21-30", "second": 10.0},
+		{"first": "31-40", "second": 10.0},
+		{"first": "41-50", "second": 10.0},
+		{"first": "51-60", "second": 10.0},
+		{"first": "61-70", "second": 10.0},
+		{"first": "71-80", "second": 10.0},
+		{"first": "81-90", "second": 10.0},
+		{"first": "91-99", "second": 10.0}],
+	"preexistingConditionPopularity": 5.0,
+	"preexistingConditionImpact": 0.5,
+	"avgPopulationHealth": 1.0,
+	"populationVaccinated": 0.0,
+	"populationWearingMasks": 0.0
+}
